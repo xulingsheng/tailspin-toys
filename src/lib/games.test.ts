@@ -3,8 +3,10 @@ import { createTestDatabase } from '../../db/test-helpers';
 import { categories, publishers, games } from '../../db/schema';
 import type { Database } from './db';
 import {
+    getAllCategories,
     getAllGames,
     getAllGameIds,
+    getAllPublishers,
     getGameById,
 } from './games';
 
@@ -18,7 +20,6 @@ async function seedGames(db: Database, count: number): Promise<void> {
         .values({ name: 'Pub One', description: 'pub' })
         .returning({ id: publishers.id });
 
-    // Insert titles in reverse-alphabetical order to prove ordering is applied.
     for (let i = count; i >= 1; i--) {
         await db.insert(games).values({
             title: `Game ${String(i).padStart(2, '0')}`,
@@ -28,6 +29,39 @@ async function seedGames(db: Database, count: number): Promise<void> {
             publisherId: publisher.id,
         });
     }
+}
+
+async function seedFilteredGames(db: Database): Promise<{
+    strategy: { id: number; name: string };
+    puzzle: { id: number; name: string };
+    pubOne: { id: number; name: string };
+    pubTwo: { id: number; name: string };
+}> {
+    const [strategy] = await db
+        .insert(categories)
+        .values({ name: 'Strategy', description: 'strategy' })
+        .returning({ id: categories.id, name: categories.name });
+    const [puzzle] = await db
+        .insert(categories)
+        .values({ name: 'Puzzle', description: 'puzzle' })
+        .returning({ id: categories.id, name: categories.name });
+    const [pubOne] = await db
+        .insert(publishers)
+        .values({ name: 'Pub One', description: 'pub one' })
+        .returning({ id: publishers.id, name: publishers.name });
+    const [pubTwo] = await db
+        .insert(publishers)
+        .values({ name: 'Pub Two', description: 'pub two' })
+        .returning({ id: publishers.id, name: publishers.name });
+
+    await db.insert(games).values([
+        { title: 'Alpha', description: 'Strategy by Pub One', starRating: 4.5, categoryId: strategy.id, publisherId: pubOne.id },
+        { title: 'Bravo', description: 'Puzzle by Pub One', starRating: 4.0, categoryId: puzzle.id, publisherId: pubOne.id },
+        { title: 'Charlie', description: 'Strategy by Pub Two', starRating: 3.8, categoryId: strategy.id, publisherId: pubTwo.id },
+        { title: 'Delta', description: 'Puzzle by Pub Two', starRating: 4.7, categoryId: puzzle.id, publisherId: pubTwo.id },
+    ]);
+
+    return { strategy, puzzle, pubOne, pubTwo };
 }
 
 describe('games data-access helpers', () => {
@@ -50,6 +84,28 @@ describe('games data-access helpers', () => {
         const ids = await getAllGameIds(db);
         const all = await getAllGames(db);
         expect(ids).toEqual(all.map((g) => g.id));
+    });
+
+    it('filters games by category and publisher together', async () => {
+        const fixtures = await seedFilteredGames(db);
+        const filtered = await getAllGames(db, {
+            categoryIds: [fixtures.strategy.id, fixtures.puzzle.id],
+            publisherId: fixtures.pubOne.id,
+        });
+
+        expect(filtered.map((game) => game.title)).toEqual(['Alpha', 'Bravo']);
+        expect(filtered.every((game) => game.publisher?.id === fixtures.pubOne.id)).toBe(true);
+    });
+
+    it('returns the known categories and publishers in alphabetical order', async () => {
+        const fixtures = await seedFilteredGames(db);
+        const categoriesList = await getAllCategories(db);
+        const publishersList = await getAllPublishers(db);
+
+        expect(categoriesList.map((category) => category.name)).toEqual(['Puzzle', 'Strategy']);
+        expect(publishersList.map((publisher) => publisher.name)).toEqual(['Pub One', 'Pub Two']);
+        expect(categoriesList.some((category) => category.id === fixtures.strategy.id)).toBe(true);
+        expect(publishersList.some((publisher) => publisher.id === fixtures.pubOne.id)).toBe(true);
     });
 
     it('fetches a single game by id', async () => {
