@@ -20,6 +20,13 @@ Refer to technology-specific instruction files:
 
 ## Core Principles
 
+### Comments and Documentation
+
+- Comment intent, constraints, and non-obvious decisions — not mechanics that are already clear from the code.
+- Prefer a short explanation of *why* over a paraphrase of *what* the next line does.
+- Treat stale comments as bugs: update or remove them whenever the related code changes.
+- Document reusable component contracts in their frontmatter with a typed `Props` interface. The interface should make each prop's purpose, requiredness, and shape clear; add a brief TSDoc comment for non-obvious props.
+
 ### Testability
 
 - Every interactive element MUST include a `data-testid` attribute
